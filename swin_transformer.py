@@ -11,13 +11,14 @@ import torch.nn.functional as F
 import torch.utils.checkpoint as cp
 import numpy as np
 import cv2
+import torch.nn.init as init
 
 from torch.nn import Module as BaseModule
 from torch.nn import ModuleList
 from torch.nn import Sequential
 from torch.nn import Linear
 from torch import Tensor
-from mmcv.runner import load_checkpoint as _load_checkpoint
+#from mmcv.runner import load_checkpoint as _load_checkpoint
 
 from itertools import repeat
 import collections.abc
@@ -1331,13 +1332,13 @@ class SwinTransformer(BaseModule):
             res = self.load_state_dict(state_dict, False)
             print('unloaded parameters:', res)
 
-    def forward(self, x, semantic_weight=None):
-        if self.semantic_weight >= 0 and semantic_weight == None:
+    def forward(self, x, semantic_weight=None):  # semantic 到底怎么交互的是在这里，也就是 swin里面
+        if self.semantic_weight >= 0 and semantic_weight == None: # x 192 3 256 128  semantic_weight 192 2
             w = torch.ones(x.shape[0],1) * self.semantic_weight
             w = torch.cat([w, 1-w], axis=-1)
             semantic_weight = w.cuda()
 
-        x, hw_shape = self.patch_embed(x)
+        x, hw_shape = self.patch_embed(x) # 对于T 从 2*bs 3 256 128 ---->24 2048 96
 
         if self.use_abs_pos_embed:
             x = x + self.absolute_pos_embed
@@ -1345,18 +1346,19 @@ class SwinTransformer(BaseModule):
 
         outs = []
         for i, stage in enumerate(self.stages):
-            x, hw_shape, out, out_hw_shape = stage(x, hw_shape)
+            x, hw_shape, out, out_hw_shape = stage(x, hw_shape) #192 512 192， 32 16 ， 192 2048 96， 64，32  bs:48
+            #从这里开始就是为了加入semantic_weight。
             if self.semantic_weight >= 0:
-                sw = self.semantic_embed_w[i](semantic_weight).unsqueeze(1)
-                sb = self.semantic_embed_b[i](semantic_weight).unsqueeze(1)
-                x = x * self.softplus(sw) + sb
+                sw = self.semantic_embed_w[i](semantic_weight).unsqueeze(1) # 192 1 192
+                sb = self.semantic_embed_b[i](semantic_weight).unsqueeze(1) # 192 1 192
+                x = x * self.softplus(sw) + sb # 192 512 192 形状没变
             if i in self.out_indices:
                 norm_layer = getattr(self, f'norm{i}')
                 out = norm_layer(out)
                 out = out.view(-1, *out_hw_shape,
                                self.num_features[i]).permute(0, 3, 1,
                                                              2).contiguous()
-                outs.append(out)
+                outs.append(out) # 192 2048 96 --- 192 96 64 32
         x = self.avgpool(outs[-1])
         x = torch.flatten(x, 1)
         return x, outs

@@ -1,6 +1,6 @@
-python -W ignore -m torch.distributed.launch --nproc_per_node=8 main_solider.py \
+python -W ignore -m torch.distributed.launch --nproc_per_node=2 main_solider.py \
 --arch swin_tiny \
---data_path path/to/LUPerson \
+--data_path /home/ma1/work/data/luperson_img/ \
 --output_dir ./log/lup/swin_tiny \
 --height 256 --width 128 \
 --crop_height 128 --crop_width 64 \
@@ -14,4 +14,5 @@ python -W ignore -m torch.distributed.launch --nproc_per_node=8 main_solider.py 
 --warmup_epochs 1 \
 --lr 0.00005 \
 --resume true \
---init_model ./log/lup/dino_tiny/checkpoint.pth
+--init_model swin_tiny.pth
+#--init_model ./log/lup/dino_tiny/checkpoint.pth

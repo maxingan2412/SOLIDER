@@ -36,6 +36,8 @@ import utils
 import vision_transformer as vits
 import swin_transformer as swin
 from vision_transformer import DINOHead
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="sklearn.cluster._kmeans", lineno=1412)
 
 torchvision_archs = sorted(name for name in torchvision_models.__dict__
     if name.islower() and not name.startswith("__")
@@ -138,7 +140,7 @@ def get_args_parser():
     parser.add_argument('--num_workers', default=16, type=int, help='Number of data loading workers per GPU.')
     parser.add_argument("--dist_url", default="env://", type=str, help="""url used to set up
         distributed training; see https://pytorch.org/docs/stable/distributed.html""")
-    parser.add_argument("--local_rank", default=0, type=int, help="Please ignore and do not set this argument.")
+    parser.add_argument("--local-rank", default=0, type=int, help="Please ignore and do not set this argument.")
     return parser
 
 
@@ -381,7 +383,7 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, part_class
             semantic_weight = [weight_unit,weight_unit]
             teacher_output, _ = teacher(images[:2],semantic_weight)  # only the 2 global views pass through the teacher
 
-            # build semantic labels with teacher feats of semantic weight = 1
+            # build semantic labels with teacher feats of semantic weight = 1 #使用teacher的特征进行聚类
             mask,mask_idxs = utils.get_mask(teacher_feats,args.partnum)
             nimages = torch.cat(images[:2])
             if len(mask_idxs) != 0:
@@ -389,28 +391,28 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, part_class
                 nmask = np.where(mask==k,0.,1.)
                 scale_factor = int(images[0].shape[-1]/nmask.shape[-1])
                 nmask = torch.from_numpy(nmask).unsqueeze(1).cuda()
-                nmask = F.interpolate(nmask, scale_factor=scale_factor, mode='nearest')
+                nmask = F.interpolate(nmask, scale_factor=scale_factor, mode='nearest') #96 8 4 -- 96 256 128,用插值的方式将mask扩大到 256 128
                 nimages = nimages[torch.from_numpy(mask_idxs)]
-                nimages = nimages * nmask
-
-            # student forward, semantic weight = randint
+                nimages = nimages * nmask #96 3 256 128 96 256 128 ---
+            #以上说明 随机选的k 从1-3 都有可能被选中，然后把相应的聚类部分的元素置为0，然后再进行插值，得到96 256 128的mask，也就是说 这个mask抹掉是聚类的一部分。并不是取出来一部分。
+            # student forward, semantic weight = randint, 学生网络的weight是随机的，但是teacher的weight是1
             semantic_weight = [torch.cat(semantic_weight)[torch.from_numpy(mask_idxs)]] \
-                            + [weight_unit for _ in range(2 + args.local_crops_number)]
-            student_output, student_feats = student([nimages.float()]+images,semantic_weight)
-            feats = student_feats[:(nimages.shape[0]+args.batch_size_per_gpu*2)].permute(0,2,3,1)
+                            + [weight_unit for _ in range(2 + args.local_crops_number)] # 第一部分是 list 1 96 2的tensor 第二部分是 list 10 48 2 的tensor
+            student_output, student_feats = student([nimages.float()]+images,semantic_weight) #576 65536, 192 768 8 4
+            feats = student_feats[:(nimages.shape[0]+args.batch_size_per_gpu*2)].permute(0,2,3,1) # 192 8 4 768
             if len(mask_idxs) != 0:
-                feats1 = feats[:nimages.shape[0]]
-                feats2 = feats[nimages.shape[0]:][torch.from_numpy(mask_idxs)]
+                feats1 = feats[:nimages.shape[0]] # 96 8 4 768
+                feats2 = feats[nimages.shape[0]:][torch.from_numpy(mask_idxs)] # 96 8 4 768
                 feats = torch.cat([feats1,feats2])
 
             # compute semantic classification loss
-            feats = feats.reshape(-1,feats.shape[-1])
-            pred = part_classifier(feats)
-            labels = torch.zeros(pred.shape[0]).long().cuda()
+            feats = feats.reshape(-1,feats.shape[-1]) # 192 8 4 768 -- 6144 768
+            pred = part_classifier(feats) #6144 4
+            labels = torch.zeros(pred.shape[0]).long().cuda() # tensor 6144 全是0
             if len(mask_idxs) != 0:
                 labels = torch.from_numpy(mask.flatten()).long().cuda()
                 labels = torch.cat([labels,labels])
-            loss2 = part_loss(pred,labels)
+            loss2 = part_loss(pred,labels) # 6144 4 和6144 1 做ce loss
             acc = (pred.max(1)[1] == labels).float().mean()
 
             # compute dino cross-entropy loss

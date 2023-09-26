@@ -25,7 +25,7 @@ import math
 import random
 import datetime
 import subprocess
-import faiss
+#import faiss
 from collections import defaultdict, deque
 
 import numpy as np
@@ -34,7 +34,8 @@ from torch import nn
 import torch.distributed as dist
 from PIL import Image, ImageFilter, ImageOps
 from sklearn.cluster import KMeans,MeanShift,estimate_bandwidth
-
+import argparse
+import warnings
 class GaussianBlur(object):
     """
     Apply Gaussian Blur to the PIL image.
@@ -654,7 +655,7 @@ def has_batchnorms(model):
         if isinstance(module, bn_types):
             return True
     return False
-
+#利用feature map的特征进行聚类，得到mask
 def get_mask(features,clsnum):
     n,c,h,w = features.shape
     masks = []
@@ -665,7 +666,7 @@ def get_mask(features,clsnum):
         x = x.reshape(-1,c)
 
         # foreground/background cluster
-        _x = np.linalg.norm(x,axis=1,keepdims=True)
+        _x = np.linalg.norm(x,axis=1,keepdims=True) #计算每行的L2范数并保留维度, l2范数就是平方和开根号
         km = KMeans(n_clusters=2, random_state=0).fit(_x)
         bg_mask = km.labels_
         ctrs = km.cluster_centers_
