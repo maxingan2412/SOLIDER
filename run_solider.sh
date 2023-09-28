@@ -11,3 +11,4 @@ python -W ignore -m torch.distributed.launch --nproc_per_node=8 main_solider.py 
 --partnum 3 \
 --parthead_nlayers 3 \
 --semantic_loss 1.0 \
+# if there's ifislfjalsfsa
