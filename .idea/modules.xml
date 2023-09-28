@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/SOLIDER.iml" filepath="$PROJECT_DIR$/.idea/SOLIDER.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/solider.iml" filepath="$PROJECT_DIR$/.idea/solider.iml" />
     </modules>
   </component>
 </project>
